@@ -1,0 +1,69 @@
+{
+	"info": {
+		"name": "Smart Parking Management System (SPMS)",
+		"description": "API collection for SPMS. Phase 1: infrastructure health checks. Business-service endpoints will be added as they are built.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Infrastructure",
+			"item": [
+				{
+					"name": "Eureka Dashboard",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8761",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "8761"
+						}
+					}
+				},
+				{
+					"name": "Config Server - Health",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8888/actuator/health",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "8888",
+							"path": ["actuator", "health"]
+						}
+					}
+				},
+				{
+					"name": "Config Server - parking-service config",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8888/parking-service/default",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "8888",
+							"path": ["parking-service", "default"]
+						}
+					}
+				},
+				{
+					"name": "API Gateway - Health",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8080/actuator/health",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "8080",
+							"path": ["actuator", "health"]
+						}
+					}
+				}
+			]
+		}
+	]
+}

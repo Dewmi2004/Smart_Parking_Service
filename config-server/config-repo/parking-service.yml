@@ -1,0 +1,27 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: parking-service
+  datasource:
+    url: jdbc:h2:mem:parkingdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  h2:
+    console:
+      enabled: true
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+# Dynamic pricing config (used from Day 12 onward)
+parking:
+  pricing:
+    base-rate: 100.0
+    high-occupancy-threshold: 0.8
+    high-occupancy-multiplier: 1.5
+  reservation:
+    expiry-minutes: 15

@@ -1,0 +1,30 @@
+server:
+  port: 8888
+
+spring:
+  application:
+    name: config-server
+  profiles:
+    # 'native' = read config files from local filesystem (config-repo folder)
+    # instead of a Git repository. Simple for local dev / assignment purposes.
+    active: native
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: classpath:/config-repo/, file:./config-server/config-repo/
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,refresh
