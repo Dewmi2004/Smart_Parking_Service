@@ -9,13 +9,14 @@
     <version>1.0.0</version>
     <packaging>pom</packaging>
     <name>Smart Parking Management System</name>
-    <description>Microservice-based Smart Parking Management System (SPMS) - Day 7 snapshot</description>
+    <description>Microservice-based Smart Parking Management System (SPMS) - Day 8 snapshot</description>
 
     <modules>
         <module>eureka-server</module>
         <module>config-server</module>
         <module>api-gateway</module>
         <module>user-service</module>
+        <module>vehicle-service</module>
     </modules>
 
     <properties>
