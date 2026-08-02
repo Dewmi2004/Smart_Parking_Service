@@ -2,12 +2,16 @@ package com.spms.parkingservice.controller;
 
 import com.spms.parkingservice.dto.ParkingSpaceRequest;
 import com.spms.parkingservice.dto.ParkingSpaceResponse;
+import com.spms.parkingservice.dto.ParkingSpaceUpdateRequest;
+import com.spms.parkingservice.dto.ReservationRequest;
+import com.spms.parkingservice.entity.ParkingStatus;
 import com.spms.parkingservice.service.ParkingSpaceService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @RestController
@@ -27,15 +31,50 @@ public class ParkingSpaceController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    // GET /spaces — list all parking spaces
+    // GET /spaces — list/search parking spaces, with optional filters:
+    // ?location=&zone=&minPrice=&maxPrice=&status=AVAILABLE
+    // Any combination of filters can be supplied; omitted ones are ignored.
     @GetMapping
-    public ResponseEntity<List<ParkingSpaceResponse>> getAllSpaces() {
-        return ResponseEntity.ok(parkingSpaceService.getAllSpaces());
+    public ResponseEntity<List<ParkingSpaceResponse>> getSpaces(
+            @RequestParam(required = false) String location,
+            @RequestParam(required = false) String zone,
+            @RequestParam(required = false) BigDecimal minPrice,
+            @RequestParam(required = false) BigDecimal maxPrice,
+            @RequestParam(required = false) ParkingStatus status) {
+
+        boolean noFiltersGiven = location == null && zone == null
+                && minPrice == null && maxPrice == null && status == null;
+
+        List<ParkingSpaceResponse> results = noFiltersGiven
+                ? parkingSpaceService.getAllSpaces()
+                : parkingSpaceService.searchSpaces(location, zone, minPrice, maxPrice, status);
+
+        return ResponseEntity.ok(results);
     }
 
     // GET /spaces/{id}
     @GetMapping("/{id}")
     public ResponseEntity<ParkingSpaceResponse> getSpaceById(@PathVariable Long id) {
         return ResponseEntity.ok(parkingSpaceService.getSpaceById(id));
+    }
+
+    // PUT /spaces/{id} — update location/zone/price
+    @PutMapping("/{id}")
+    public ResponseEntity<ParkingSpaceResponse> updateSpace(@PathVariable Long id,
+                                                              @Valid @RequestBody ParkingSpaceUpdateRequest request) {
+        return ResponseEntity.ok(parkingSpaceService.updateSpace(id, request));
+    }
+
+    // PUT /spaces/{id}/reserve — reserve an AVAILABLE space
+    @PutMapping("/{id}/reserve")
+    public ResponseEntity<ParkingSpaceResponse> reserveSpace(@PathVariable Long id,
+                                                               @Valid @RequestBody ReservationRequest request) {
+        return ResponseEntity.ok(parkingSpaceService.reserveSpace(id, request));
+    }
+
+    // PUT /spaces/{id}/release — release a RESERVED/OCCUPIED space back to AVAILABLE
+    @PutMapping("/{id}/release")
+    public ResponseEntity<ParkingSpaceResponse> releaseSpace(@PathVariable Long id) {
+        return ResponseEntity.ok(parkingSpaceService.releaseSpace(id));
     }
 }
