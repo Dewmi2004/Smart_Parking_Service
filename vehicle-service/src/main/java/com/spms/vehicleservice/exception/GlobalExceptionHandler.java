@@ -25,6 +25,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
+    @ExceptionHandler(InvalidLogStateException.class)
+    public ResponseEntity<ApiError> handleInvalidLogState(InvalidLogStateException ex) {
+        ApiError body = new ApiError(HttpStatus.CONFLICT.value(), "Conflict", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
     @ExceptionHandler(ExternalServiceException.class)
     public ResponseEntity<ApiError> handleExternalService(ExternalServiceException ex) {
         ApiError body = new ApiError(HttpStatus.BAD_GATEWAY.value(), "Bad Gateway", ex.getMessage());
