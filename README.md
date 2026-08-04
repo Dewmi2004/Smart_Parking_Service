@@ -1,86 +1,98 @@
-# SPMS — Day 13: Reservation Expiry
+# SPMS — Day 14: Payment Service
 
 ## Goal
-Stop no-shows from holding a parking space forever: automatically release
-a reservation if the driver hasn't arrived within a configured time window.
+Stand up mock payment processing for parking fees, with a realistic
+PENDING → SUCCESS/FAILED transaction lifecycle.
 
 ## What's new in this snapshot
 ```
-parking-service/src/main/java/com/spms/parkingservice/
-├── config/ParkingReservationProperties.java   (new — binds parking.reservation.*)
-├── scheduler/ReservationExpiryScheduler.java   (new — @Scheduled sweep + manual trigger)
-├── repository/ParkingSpaceRepository.java       (updated — findByStatusAndReservedAtBefore)
-├── controller/ParkingSpaceController.java        (updated — POST /spaces/expire-check)
-└── ParkingServiceApplication.java                  (updated — @EnableScheduling)
+payment-service/
+├── pom.xml
+└── src/main/
+    ├── java/com/spms/paymentservice/
+    │   ├── PaymentServiceApplication.java
+    │   ├── entity/Payment.java, PaymentStatus.java
+    │   ├── repository/PaymentRepository.java
+    │   ├── dto/PaymentRequest.java, PaymentResponse.java
+    │   ├── service/PaymentService.java        ← mock card validation + status transitions
+    │   ├── controller/PaymentController.java
+    │   └── exception/GlobalExceptionHandler.java, ResourceNotFoundException.java, ApiError.java
+    └── resources/application.yml
 ```
-Everything from Days 1–12 (Eureka, Config Server, Gateway, User Service,
-Vehicle Service, Parking Service with filters/reserve/release/dynamic
-pricing) is carried forward unchanged.
+Everything from Days 1–13 (Eureka, Config Server, Gateway, User Service,
+Vehicle Service, Parking Service) is carried forward unchanged.
 
-## How it works
-A background job (`ReservationExpiryScheduler`) runs every
-`expiry-check-interval-ms` (default **60 seconds**) and looks for any space
-still `RESERVED` whose `reservedAt` timestamp is older than
-`expiry-minutes` (default **15 minutes**). Each match is automatically
-flipped back to `AVAILABLE` and its reservation fields cleared — exactly
-like calling `PUT /spaces/{id}/release` yourself, just automatic.
+## How the mock transaction works
+`POST /payments` doesn't just save a row — it simulates a real gateway
+call:
+1. A `Payment` is saved with `status: PENDING` and a generated
+   `transactionRef` (e.g. `TXN-4F2A9E1B7C3D5A80`).
+2. The mock card is validated: 16-digit card number, 3–4 digit CVV, and an
+   expiry date that hasn't passed.
+3. The record is updated to `SUCCESS` (passes validation) or `FAILED`
+   (with a `failureReason`), then returned.
 
-Configurable in `application.yml` (or via Config Server):
-```yaml
-parking:
-  reservation:
-    expiry-minutes: 15
-    expiry-check-interval-ms: 60000
-```
+**Card numbers are never stored in full** — only a masked version
+(`**** **** **** 1234`) is persisted, same as any real system would do.
 
-## New endpoint (for testing/demoing)
+## Endpoints
 
 | Method | Path | Description |
 |---|---|---|
-| **POST** | **`/spaces/expire-check`** | **Manually run the expiry sweep right now** |
+| POST | `/payments` | Process a mock payment |
+| GET | `/payments` | List all payments |
+| GET | `/payments/{id}` | Get a single payment |
+| GET | `/payments/user/{userId}` | A user's payment history |
 
-Waiting a real 15 minutes to see auto-release happen isn't practical during
-grading/testing, so this endpoint runs the exact same sweep logic
-on-demand. Returns e.g. `{"releasedCount": 2}`.
-
-### Sample flow — see it in action
+### Sample request — successful payment
 ```http
-### 1. Reserve a space
-PUT http://localhost:8083/spaces/1/reserve
+POST http://localhost:8084/payments
 Content-Type: application/json
 
-{ "userId": 5, "vehicleId": 10 }
-
-### 2. Temporarily set expiry-minutes to 0 in application.yml and restart
-###    (or just wait — the real scheduler will catch it after 15 min anyway)
-
-### 3. Force an immediate sweep instead of waiting
-POST http://localhost:8083/spaces/expire-check
-
-### 4. Confirm it's released
-GET http://localhost:8083/spaces/1
+{
+  "userId": 1,
+  "vehicleId": 1,
+  "parkingSpaceId": 3,
+  "amount": 350.00,
+  "cardNumber": "4111111111111111",
+  "expiryMonth": 12,
+  "expiryYear": 2027,
+  "cvv": "123"
+}
 ```
-With `expiry-minutes: 0`, any active reservation is immediately "expired"
-the moment you hit `/expire-check`, which is the fastest way to verify the
-logic without editing timestamps directly in the H2 console.
+Returns `201 Created` with `status: "SUCCESS"`.
+
+### Sample request — failed payment (expired card)
+```http
+POST http://localhost:8084/payments
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "amount": 350.00,
+  "cardNumber": "4111111111111111",
+  "expiryMonth": 1,
+  "expiryYear": 2020,
+  "cvv": "123"
+}
+```
+Returns `201 Created` with `status: "FAILED"` and
+`failureReason: "Card has expired"`. (The HTTP status is still `201`
+because the *request* to process a payment succeeded — the *transaction
+outcome* is what failed, same as a real gateway response.)
+
+Also reachable through the Gateway: `http://localhost:8080/api/payments`.
 
 ## How to run
 ```bash
 mvn clean install
 # start eureka-server, config-server, api-gateway, user-service,
-# vehicle-service, then:
-cd parking-service && mvn spring-boot:run
-```
-Watch the parking-service console log — successful sweeps that actually
-released something log a line like:
-```
-Reservation expiry sweep: auto-released 1 expired reservation(s)
+# vehicle-service, parking-service, then:
+cd payment-service && mvn spring-boot:run
 ```
 
 ## Verify
-1. Reserve a space.
-2. Check its `status` is `RESERVED` and `reservedAt` is populated (`GET /spaces/{id}`).
-3. Set `parking.reservation.expiry-minutes: 0` in `application.yml`, restart the service.
-4. Call `POST /spaces/expire-check` — response shows `releasedCount: 1` (or however many were reserved).
-5. `GET /spaces/{id}` again — `status` is back to `AVAILABLE`, reservation fields are `null`.
-6. Set `expiry-minutes` back to a real value (e.g. `15`) once you're done testing.
+- Eureka dashboard (**http://localhost:8761**) → `PAYMENT-SERVICE` now listed.
+- **http://localhost:8084/actuator/health** → `UP`.
+- H2 console (dev only): **http://localhost:8084/h2-console**, JDBC URL `jdbc:h2:mem:paymentdb`.
+- Try both a valid and an invalid card and confirm `status` differs accordingly.
