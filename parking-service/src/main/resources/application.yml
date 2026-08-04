@@ -37,11 +37,18 @@ management:
       exposure:
         include: health,info
 
-# Dynamic pricing / reservation config staged for Day 12-13
+# Dynamic pricing config (Day 12)
 parking:
   pricing:
     base-rate: 100.0
     high-occupancy-threshold: 0.8
     high-occupancy-multiplier: 1.5
+    peak-hour-enabled: true
+    peak-hour-multiplier: 1.2
+    peak-hours:
+      - start: "08:00"
+        end: "10:00"
+      - start: "17:00"
+        end: "19:00"
   reservation:
     expiry-minutes: 15

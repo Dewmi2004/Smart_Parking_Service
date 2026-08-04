@@ -12,6 +12,8 @@ public class ParkingSpaceResponse {
     private String location;
     private String zone;
     private BigDecimal price;
+    private BigDecimal effectivePrice;
+    private Double zoneOccupancyRate;
     private ParkingStatus status;
     private Long ownerId;
     private Long reservedByUserId;
@@ -19,11 +21,19 @@ public class ParkingSpaceResponse {
     private LocalDateTime reservedAt;
     private LocalDateTime createdAt;
 
+    /** Basic constructor — no dynamic pricing info (effectivePrice == price). */
     public ParkingSpaceResponse(ParkingSpace space) {
+        this(space, space.getPrice(), null);
+    }
+
+    /** Full constructor including live dynamic-pricing figures. */
+    public ParkingSpaceResponse(ParkingSpace space, BigDecimal effectivePrice, Double zoneOccupancyRate) {
         this.id = space.getId();
         this.location = space.getLocation();
         this.zone = space.getZone();
         this.price = space.getPrice();
+        this.effectivePrice = effectivePrice;
+        this.zoneOccupancyRate = zoneOccupancyRate;
         this.status = space.getStatus();
         this.ownerId = space.getOwnerId();
         this.reservedByUserId = space.getReservedByUserId();
@@ -46,6 +56,14 @@ public class ParkingSpaceResponse {
 
     public BigDecimal getPrice() {
         return price;
+    }
+
+    public BigDecimal getEffectivePrice() {
+        return effectivePrice;
+    }
+
+    public Double getZoneOccupancyRate() {
+        return zoneOccupancyRate;
     }
 
     public ParkingStatus getStatus() {

@@ -18,9 +18,11 @@ import java.util.List;
 public class ParkingSpaceService {
 
     private final ParkingSpaceRepository parkingSpaceRepository;
+    private final PricingService pricingService;
 
-    public ParkingSpaceService(ParkingSpaceRepository parkingSpaceRepository) {
+    public ParkingSpaceService(ParkingSpaceRepository parkingSpaceRepository, PricingService pricingService) {
         this.parkingSpaceRepository = parkingSpaceRepository;
+        this.pricingService = pricingService;
     }
 
     public ParkingSpaceResponse createSpace(ParkingSpaceRequest request) {
@@ -31,13 +33,13 @@ public class ParkingSpaceService {
                 request.getOwnerId()
         );
         ParkingSpace saved = parkingSpaceRepository.save(space);
-        return new ParkingSpaceResponse(saved);
+        return toResponseWithPricing(saved);
     }
 
     public List<ParkingSpaceResponse> getAllSpaces() {
         return parkingSpaceRepository.findAll()
                 .stream()
-                .map(ParkingSpaceResponse::new)
+                .map(this::toResponseWithPricing)
                 .toList();
     }
 
@@ -58,12 +60,12 @@ public class ParkingSpaceService {
 
         return parkingSpaceRepository.findAll(spec)
                 .stream()
-                .map(ParkingSpaceResponse::new)
+                .map(this::toResponseWithPricing)
                 .toList();
     }
 
     public ParkingSpaceResponse getSpaceById(Long id) {
-        return new ParkingSpaceResponse(findSpaceOrThrow(id));
+        return toResponseWithPricing(findSpaceOrThrow(id));
     }
 
     public ParkingSpaceResponse updateSpace(Long id, ParkingSpaceUpdateRequest request) {
@@ -79,7 +81,7 @@ public class ParkingSpaceService {
             space.setPrice(request.getPrice());
         }
 
-        return new ParkingSpaceResponse(parkingSpaceRepository.save(space));
+        return toResponseWithPricing(parkingSpaceRepository.save(space));
     }
 
     /** Reserve an AVAILABLE space for a user/vehicle. */
@@ -96,7 +98,7 @@ public class ParkingSpaceService {
         space.setReservedVehicleId(request.getVehicleId());
         space.setReservedAt(LocalDateTime.now());
 
-        return new ParkingSpaceResponse(parkingSpaceRepository.save(space));
+        return toResponseWithPricing(parkingSpaceRepository.save(space));
     }
 
     /** Release a RESERVED or OCCUPIED space back to AVAILABLE. */
@@ -112,11 +114,18 @@ public class ParkingSpaceService {
         space.setReservedVehicleId(null);
         space.setReservedAt(null);
 
-        return new ParkingSpaceResponse(parkingSpaceRepository.save(space));
+        return toResponseWithPricing(parkingSpaceRepository.save(space));
     }
 
     protected ParkingSpace findSpaceOrThrow(Long id) {
         return parkingSpaceRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Parking space not found with id: " + id));
+    }
+
+    /** Attaches the live effective price + zone occupancy rate to a response. */
+    private ParkingSpaceResponse toResponseWithPricing(ParkingSpace space) {
+        BigDecimal effectivePrice = pricingService.calculateEffectivePrice(space);
+        double occupancyRate = pricingService.getZoneOccupancyRate(space.getZone());
+        return new ParkingSpaceResponse(space, effectivePrice, occupancyRate);
     }
 }
