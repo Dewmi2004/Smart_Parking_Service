@@ -5,6 +5,7 @@ import com.spms.parkingservice.dto.ParkingSpaceResponse;
 import com.spms.parkingservice.dto.ParkingSpaceUpdateRequest;
 import com.spms.parkingservice.dto.ReservationRequest;
 import com.spms.parkingservice.entity.ParkingStatus;
+import com.spms.parkingservice.scheduler.ReservationExpiryScheduler;
 import com.spms.parkingservice.service.ParkingSpaceService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -13,15 +14,19 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/spaces")
 public class ParkingSpaceController {
 
     private final ParkingSpaceService parkingSpaceService;
+    private final ReservationExpiryScheduler reservationExpiryScheduler;
 
-    public ParkingSpaceController(ParkingSpaceService parkingSpaceService) {
+    public ParkingSpaceController(ParkingSpaceService parkingSpaceService,
+                                   ReservationExpiryScheduler reservationExpiryScheduler) {
         this.parkingSpaceService = parkingSpaceService;
+        this.reservationExpiryScheduler = reservationExpiryScheduler;
     }
 
     // POST /spaces — create a new parking space
@@ -76,5 +81,15 @@ public class ParkingSpaceController {
     @PutMapping("/{id}/release")
     public ResponseEntity<ParkingSpaceResponse> releaseSpace(@PathVariable Long id) {
         return ResponseEntity.ok(parkingSpaceService.releaseSpace(id));
+    }
+
+    // POST /spaces/expire-check — manually trigger the reservation-expiry sweep
+    // immediately, instead of waiting for the background scheduler's next tick
+    // or for parking.reservation.expiry-minutes to actually elapse. Handy for
+    // testing/demoing Day 13 without sitting around for real minutes to pass.
+    @PostMapping("/expire-check")
+    public ResponseEntity<Map<String, Integer>> triggerExpiryCheck() {
+        int released = reservationExpiryScheduler.releaseExpiredReservationsNow();
+        return ResponseEntity.ok(Map.of("releasedCount", released));
     }
 }

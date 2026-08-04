@@ -52,3 +52,4 @@ parking:
         end: "19:00"
   reservation:
     expiry-minutes: 15
+    expiry-check-interval-ms: 60000

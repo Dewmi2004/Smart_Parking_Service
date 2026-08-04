@@ -1,68 +1,68 @@
-# SPMS — Day 12: Dynamic Pricing
+# SPMS — Day 13: Reservation Expiry
 
 ## Goal
-Make parking prices respond to real demand: raise price when a zone is
-crowded, and optionally during configured peak hours.
+Stop no-shows from holding a parking space forever: automatically release
+a reservation if the driver hasn't arrived within a configured time window.
 
 ## What's new in this snapshot
 ```
 parking-service/src/main/java/com/spms/parkingservice/
-├── config/ParkingPricingProperties.java     (new — binds parking.pricing.*)
-├── service/PricingService.java               (new — occupancy + peak-hour calc)
-├── repository/ParkingSpaceRepository.java     (updated — occupancy count queries)
-├── dto/ParkingSpaceResponse.java               (updated — + effectivePrice, zoneOccupancyRate)
-└── service/ParkingSpaceService.java             (updated — every response now includes live pricing)
+├── config/ParkingReservationProperties.java   (new — binds parking.reservation.*)
+├── scheduler/ReservationExpiryScheduler.java   (new — @Scheduled sweep + manual trigger)
+├── repository/ParkingSpaceRepository.java       (updated — findByStatusAndReservedAtBefore)
+├── controller/ParkingSpaceController.java        (updated — POST /spaces/expire-check)
+└── ParkingServiceApplication.java                  (updated — @EnableScheduling)
 ```
-Everything from Days 1–11 (Eureka, Config Server, Gateway, User Service,
-Vehicle Service, Parking Service with filters/reserve/release) is carried
-forward unchanged.
+Everything from Days 1–12 (Eureka, Config Server, Gateway, User Service,
+Vehicle Service, Parking Service with filters/reserve/release/dynamic
+pricing) is carried forward unchanged.
 
-## How dynamic pricing works
-Nothing is stored — `effectivePrice` is calculated **fresh on every read**
-from two stacking multipliers:
-
-1. **Occupancy surge**: if the space's zone (RESERVED + OCCUPIED spaces ÷
-   total spaces in that zone) is above `high-occupancy-threshold` (default
-   `0.8` = 80%), price × `high-occupancy-multiplier` (default `1.5`).
-2. **Peak hour**: if `peak-hour-enabled` and the current time falls inside
-   any configured window, price × `peak-hour-multiplier` (default `1.2`).
-
-Both can apply at once (e.g. a crowded zone during evening rush = 1.5 × 1.2
-= 1.8× the base price).
+## How it works
+A background job (`ReservationExpiryScheduler`) runs every
+`expiry-check-interval-ms` (default **60 seconds**) and looks for any space
+still `RESERVED` whose `reservedAt` timestamp is older than
+`expiry-minutes` (default **15 minutes**). Each match is automatically
+flipped back to `AVAILABLE` and its reservation fields cleared — exactly
+like calling `PUT /spaces/{id}/release` yourself, just automatic.
 
 Configurable in `application.yml` (or via Config Server):
 ```yaml
 parking:
-  pricing:
-    high-occupancy-threshold: 0.8
-    high-occupancy-multiplier: 1.5
-    peak-hour-enabled: true
-    peak-hour-multiplier: 1.2
-    peak-hours:
-      - start: "08:00"
-        end: "10:00"
-      - start: "17:00"
-        end: "19:00"
+  reservation:
+    expiry-minutes: 15
+    expiry-check-interval-ms: 60000
 ```
 
-## Response shape
-Every `GET /spaces`, `GET /spaces/{id}`, `POST /spaces`, `PUT /spaces/{id}`,
-reserve, and release response now includes:
-```json
-{
-  "id": 1,
-  "location": "Colombo City Center",
-  "zone": "Zone A",
-  "price": 100.00,
-  "effectivePrice": 150.00,
-  "zoneOccupancyRate": 0.83,
-  "status": "AVAILABLE",
-  ...
-}
+## New endpoint (for testing/demoing)
+
+| Method | Path | Description |
+|---|---|---|
+| **POST** | **`/spaces/expire-check`** | **Manually run the expiry sweep right now** |
+
+Waiting a real 15 minutes to see auto-release happen isn't practical during
+grading/testing, so this endpoint runs the exact same sweep logic
+on-demand. Returns e.g. `{"releasedCount": 2}`.
+
+### Sample flow — see it in action
+```http
+### 1. Reserve a space
+PUT http://localhost:8083/spaces/1/reserve
+Content-Type: application/json
+
+{ "userId": 5, "vehicleId": 10 }
+
+### 2. Temporarily set expiry-minutes to 0 in application.yml and restart
+###    (or just wait — the real scheduler will catch it after 15 min anyway)
+
+### 3. Force an immediate sweep instead of waiting
+POST http://localhost:8083/spaces/expire-check
+
+### 4. Confirm it's released
+GET http://localhost:8083/spaces/1
 ```
-- `price` — the space's stored base price (unchanged from Day 10/11).
-- `effectivePrice` — what you'd actually pay right now.
-- `zoneOccupancyRate` — 0.0–1.0, how full that zone currently is.
+With `expiry-minutes: 0`, any active reservation is immediately "expired"
+the moment you hit `/expire-check`, which is the fastest way to verify the
+logic without editing timestamps directly in the H2 console.
 
 ## How to run
 ```bash
@@ -71,12 +71,16 @@ mvn clean install
 # vehicle-service, then:
 cd parking-service && mvn spring-boot:run
 ```
+Watch the parking-service console log — successful sweeps that actually
+released something log a line like:
+```
+Reservation expiry sweep: auto-released 1 expired reservation(s)
+```
 
 ## Verify
-1. Create several spaces in the same zone (e.g. 5 spaces, "Zone A").
-2. Reserve 4 of them (`PUT /spaces/{id}/reserve`) — that zone is now 80% occupied.
-3. `GET /spaces?zone=Zone%20A` — occupied-zone spaces should now show
-   `effectivePrice` higher than `price` (surge multiplier applied).
-4. To test peak-hour pricing without waiting for the actual time, temporarily
-   edit the `peak-hours` window in `application.yml` to include the current
-   time, restart, and re-check `effectivePrice`.
+1. Reserve a space.
+2. Check its `status` is `RESERVED` and `reservedAt` is populated (`GET /spaces/{id}`).
+3. Set `parking.reservation.expiry-minutes: 0` in `application.yml`, restart the service.
+4. Call `POST /spaces/expire-check` — response shows `releasedCount: 1` (or however many were reserved).
+5. `GET /spaces/{id}` again — `status` is back to `AVAILABLE`, reservation fields are `null`.
+6. Set `expiry-minutes` back to a real value (e.g. `15`) once you're done testing.
